@@ -9,3 +9,4 @@ J Neurophysiol. 97(3):2174-90" for a description of the methodology.
 
 from lpa import LPA_Signal
 import lpa
+import lpa_colormaps

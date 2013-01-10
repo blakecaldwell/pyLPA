@@ -10,8 +10,6 @@ import cPickle
 from pyLPA import LPA_Signal
 
 # loading the underlying data matrix and define names
-# LOADNAME = '/home/enorhe/Work/LPA/Data/LPAdata/R14P03S2Tones/'\
-#     + 'R14P03S2TonesMUAAVG_flat'
 LOADNAME = 'testdata.mat'
 CASENAME = 'testcase'
 
@@ -20,8 +18,8 @@ SETNAME_MUA = 'mua'
 SETNAME_LFP = 'lfp'
 
 # MUA = DATA[SETNAME_MUA]
-MUA = DATA[SETNAME_MUA][SETNAME_MUA][0,0][:,:100,:]
-LFP = DATA[SETNAME_LFP][SETNAME_LFP][0,0][:,:100,:]
+MUA = DATA[SETNAME_MUA][SETNAME_MUA][0,0]
+LFP = DATA[SETNAME_LFP][SETNAME_LFP][0,0]
 
 ###################################################################
 # initializing the LPA_signal
@@ -102,9 +100,9 @@ r, Mmat, rmat, Mphi = lpa_signal(mode, solver, x0, lb, ub, **solve_dict)
 
 # r = output from openopt solver with best parameters, error, and some
 # other stuff.
-# Mmat : spatial profiles
-# rmat : firing rates (or temporal profiles)
-# Mphi = Mmat *rmat
+# Mmat : spatial profiles (2D)
+# rmat : firing rates (or temporal profiles) (3D)
+# Mphi = Mmat *rmat (3D)
 
 ##################################################################
 # Save the stuff

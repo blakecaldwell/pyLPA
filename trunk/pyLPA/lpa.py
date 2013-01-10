@@ -609,20 +609,18 @@ def _singleAlpha(x, dt):
     return [h]
 
 def _doubleExp(x, dt):
-    h = []
-    h.append(_singleExpKernel(x[:2], dt))
-    h.append(_singleExpKernel(x[2:], dt))
+    h1 = _singleExp(x[:2], dt)
+    h2 = _singleExp(x[2:], dt)
+    h = [h1[0], h2[0]]
 
     return h
 
 def _doubleAlpha(x, dt):
     h = []
-    h.append(_singleAlphaKernel(x[:2], dt))
-    h.append(_singleAlphaKernel(x[2:], dt))
+    h.append(_singleAlpha(x[:2], dt))
+    h.append(_singleAlpha(x[2:], dt))
 
     return h
-
-
             
 class randw(object):
     def __init__( self ):

@@ -29,12 +29,15 @@ del lpa_signal.Mphi
 ###########################################################
 # Set up arguments for solving lfp
 
-kernel = 'singleExp'
-x0 = [50., 0.1]
+# kernel = 'singleExp'
+# x0 = [50., 0.1]
+# lb = [np.finfo(np.double).tiny, 0]
+# ub = [50, 50]
 
-lb = [np.finfo(np.double).tiny, 0]
-ub = [50, 50]
-
+kernel = 'doubleExp'
+x0 = [8, 0.1, 100, 2]
+lb = [np.finfo(np.double).tiny, 0, np.finfo(np.double).tiny, 0]
+ub = [50, 10, 300, 50]
 # these dicts are explained in example1_mua.py
 init_args = {}
 solve_args = {}
