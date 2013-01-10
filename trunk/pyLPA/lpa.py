@@ -61,11 +61,11 @@ class LPA_Signal(object):
         self.tstim_idx = pl.floor(self.tstim/self.dt)
         
         # create matrices and calculate variances
-        self.ImportDataset(mua_data, 'MUA')
+        self.importDataset(mua_data, 'MUA')
         if not lfp_data==None:
-            self.ImportDataset(lfp_data, 'LFP')
+            self.importDataset(lfp_data, 'LFP')
 
-    def ImportDataset( self, lpa_data, mode ):
+    def importDataset( self, lpadata, mode ):
         '''
         Reshapes matrices and comupte baseline variance and adds to attributes
         This function ...
@@ -78,22 +78,22 @@ class LPA_Signal(object):
 
 
         '''
-        lpadat = pl.asarray(lpa_data.copy())
+
         matname = mode.lower() + 'mat'
         varname = mode.lower() + 'var'
 
-        nstim, ntime, nchan = lpadat.shape
+        nstim, ntime, nchan = lpadata.shape
 
         if mode.lower()=='lfp' and hasattr(self, '_muamat'):
             if nstim != self.nstim:
                 raise Exception, 'Number of stimuli in %s and MUA data' \
                     ' does not match' % setname
-            elif ntime != self.ntime+self.tstim_idx:
+            elif ntime != self.ntime:
                 raise Exception, 'Number of sampling points in %s and' \
-                    ' MUA data does not match' % setname
-            elif nchan != (self.maxchannel - self.minchannel +1):
+                    ' MUA data does not match' % mode
+            elif nchan != self.nchan:
                 raise Exception, 'Number of channels in %s and MUA data' \
-                    ' does not match' % setname
+                    ' does not match' % mode
         # Apply base/mean subtraction to each stimulus and channel separately
         tmp_idx = 0
         if self.sub_at=='base':
@@ -106,19 +106,20 @@ class LPA_Signal(object):
         if not tmp_idx==0:
             for istim in xrange(self.nstim):
                 for ichan in xrange(self.nchan):
-                    lpadat[istim, :, ichan] = lpadat[istim, :, ichan] \
-                        - lpadat[istim, :tmp_idx, ichan].mean()
+                    lpadata[istim, :, ichan] = lpadata[istim, :, ichan] \
+                        - lpadata[istim, :tmp_idx, ichan].mean()
 
         # reshape data to 2D
-        lpamat = lpadat.reshape((self.nstim*self.ntime, self.nchan)).transpose()
+        lpamat = self._reshapeMat( lpadata )
+        #lpamat = lpadata.reshape((self.nstim*self.ntime, self.nchan)).transpose()
         
         # Evaluate variances of stimulus evoked signal
-        lpavar = lpadat[:, self.tstim_idx:, :].var()
+        lpavar = lpadata[:, self.tstim_idx:, :].var()
 
         exec('self._'+matname+' = lpamat')
         exec('self._'+varname+' = lpavar')
 
-    def __call__( self, mode, solver, x0, init_args={}, solve_args={},
+    def __call__( self, mode, solver, x0, lb, ub, init_args={}, solve_args={},
                   f_args=(), plot=False ):
         '''
         This is where the action starts.
@@ -131,10 +132,11 @@ class LPA_Signal(object):
         '''
         
         if self.verbose:
-            print mode
+            msg = 'Solving for %s part of signal' % mode 
+            print msg
         # Check if initial guess is provided in one or both of the argument
         # dictionaries
-        redundant_args = ['x0', 'plot']
+        redundant_args = ['A', 'b', 'lb', 'ub', 'x0', 'plot']
         for red_arg in redundant_args:
             if red_arg in init_args.keys():
                 msg = 'Initial guess *%s* found in *init_args*. I will ' \
@@ -151,6 +153,14 @@ class LPA_Signal(object):
                     print msg
                 del solve_args[red_arg]        
 
+        # Set temporary attributes. These are removed in the end
+        attr_list = ['solver', 'x0', 'ub', 'init_args', 'solve_args']
+        for attr_name in attr_list:
+            try:
+                exec('self.'+attr_name+' = '+attr_name+'.copy()')
+            except AttributeError:
+                exec('self.'+attr_name+' = '+attr_name)
+
         if mode.lower()=='mua':
             # Check for consistent length of x0
             M_params = pl.asarray(x0).squeeze()
@@ -160,45 +170,90 @@ class LPA_Signal(object):
                 raise Exception, err_msg
             else:
                 self.npop = M_params.shape[0]/3
-
+            
+            # Do some pre-solve operations
+            f_args = self._muaWarmup(*f_args)
+                
             # create linear constraints
-            A, b = self._create_constraints()
-            init_args_internal = {'A' : A, 'b' : b}
-            init_args_internal.update(init_args)
+            A, b = self._muaConstraints()            
             
-            # Set some attributes
-            self.mua_solver = solver
-            self.mua_x0 = x0
-            self.mua_init_args = init_args_internal
-            self.mua_solve_args = solve_args            
+            # Set the error function
+            f_fnc = self._muaErr
             
-            # Set the error function and arguments for it. Default is no 
-            # arguments except the parameters used for fitting, but this
-            # might change in a subclass
-            f_fnc = self._mua_err
-            # f_args = self._mua_f_args(**f_fnc_args)
-            
-            # Finally, put everything into a dictionary that can be 
-            # passed to self._solve()
-            fmin_args = {
-                'solver' : self.mua_solver,
-                'f_fnc' : f_fnc,
-                'f_args' : f_args,
-                'x0' : self.mua_x0,
-                'init_args' : self.mua_init_args,
-                'solve_args' : self.mua_solve_args,
-                'plot' : plot}
-            
-            r = self._solve(fmin_args)
-
         elif mode.lower()=='lfp':
-            self.lfp_solver = solver
-            self.lfp_x0 = x0
-            self.lfp_solver_args = solver_args
-            # put in lfp f_fnc and args
+            # linear constraints
+            f_args = self._lfpWarmup(*f_args)
+            A, b = self._lfpConstraints()
+            # Error function
+            f_fnc = self._lfpErr
 
+        init_args_internal = {
+            'A' : A, 'b' : b,
+            'lb' : lb, 'ub' : self.ub
+            }
+        
+        # Override self.init_args with init_args_internal
+        self.init_args.update(init_args_internal)
+
+        # Finally, put everything into a dictionary that can be 
+        # passed to self._solve()
+        fmin_args = {
+            'solver' : self.solver,
+            'f_fnc' : f_fnc,
+            'f_args' : f_args,
+            'x0' : self.x0,
+            'init_args' : self.init_args,
+            'solve_args' : self.solve_args,
+            'plot' : plot
+            }
+        
+        r = self._solve(fmin_args)
+
+        ############################################################
         # Post solver processing
-        return r
+        # Find decompositions and full matrix for best parameters
+        if mode.lower()=='mua':
+            Smat, Tmat_tmp = self.muaDecomp( r.xf, *f_args )
+        elif mode.lower()=='lfp':
+            Smat, Tmat_tmp = self.lfpDecomp( r.xf, *f_args )
+
+        Phimat_tmp = pl.dot(Smat, Tmat_tmp)
+        # Reshape to 3d
+        Tmat = self._reshapeMat( Tmat_tmp )
+        Phimat = self._reshapeMat( Phimat_tmp )
+        
+        # deleting temporary attributes
+        for attr_name in attr_list:
+            exec('del self.'+attr_name)        
+        
+        return r, Smat, Tmat, Phimat
+
+    def _reshapeMat( self, rawmat ):
+        '''
+        This function ...
+    
+        Aguments
+        --------
+
+        Keyword arguments
+        -----------------
+        '''
+        
+        if rawmat.ndim==2:
+            
+            # Create the 3D scores
+            outmat = rawmat.transpose().reshape( 
+                (self.nstim, self.ntime, rawmat.shape[0]) )
+            # Create full 3D array
+#            Phimat = pl.asarray(
+#                [pl.dot(Smat, Tm.transpose()).transpose() for Tm in Tmat])
+        elif rawmat.ndim==3:
+            outmat = rawmat.reshape(
+                (self.nstim*self.ntime, rawmat.shape[-1]) ).transpose()
+            
+
+        return outmat
+        
 
     def _solve( self, fmin_args ):
         '''
@@ -212,17 +267,17 @@ class LPA_Signal(object):
         '''
 
         if fmin_args['solver'] == 'fmin_randw':
-            r = self._fmin_randw()
+            r = self._fminRandw()
         elif not oopt_import:
             raise Exception, oopt_import_msg
         elif fmin_args['solver'] in nlp_solvers+glp_solvers:
-            r = self._fmin_oopt(**fmin_args)
+            r = self._fminOopt(**fmin_args)
         else:
             pass
 
         return r
     
-    def _fmin_randw( self ):
+    def _fminRandw( self ):
         '''
         This function ...
     
@@ -235,7 +290,7 @@ class LPA_Signal(object):
 
         pass
 
-    def _fmin_oopt( self, f_fnc, f_args, solver, x0, init_args={},
+    def _fminOopt( self, f_fnc, f_args, solver, x0, init_args={},
                     solve_args={}, plot=False):
         '''
         This function ...
@@ -251,7 +306,6 @@ class LPA_Signal(object):
 
         # Check what solver is in use and put initial guess argument in right
         # dictionary
-        print solver
         if solver in glp_solvers:
             solve_args['plot'] = plot
             solve_args['x0'] = x0
@@ -264,7 +318,7 @@ class LPA_Signal(object):
             init_args['x0'] = x0
 
             p = oopt.NLP(fnc, **init_args) # Set up openopt class
-            r = p.solve(solver, **oopt_solver_args) # and solve
+            r = p.solve(solver, **solve_args) # and solve
             
         else: 
             raise Exception, 'The solver %s is not recognized. Check' \
@@ -273,7 +327,7 @@ class LPA_Signal(object):
         
         return r
 
-    def _mua_err( self, M_params ):
+    def _muaErr( self, M_params ):
         '''
         This function ...
     
@@ -284,27 +338,12 @@ class LPA_Signal(object):
         -----------------
         '''
         
-        Mmat, rmat = self.create_Mmat_rmat( M_params )
-        ff = err_eval(self._muamat, Mmat, rmat)
+        Mmat, rmat = self.muaDecomp( M_params )
+        ff = errEval(self._muamat, Mmat, rmat)
 
         return ff
         
-#    def _mua_f_args( self ):
-#        '''
-#        This function ...
-#    
-#        Aguments
-#        --------
-#
-#        Keyword arguments
-#        -----------------
-#        '''
-#        
-#        f_args = ()
-#
-#        return f_args
-    
-    def lfp_err( self ):
+    def _lfpErr( self, L_params, rmat, kernel ):
         '''
         This function ...
     
@@ -314,10 +353,13 @@ class LPA_Signal(object):
         Keyword arguments
         -----------------
         '''
+        
+        Lmat, Rmat = self.lfpDecomp( L_params, rmat, kernel )
+        ff = errEval(self._lfpmat, Lmat, Rmat)
 
-        pass
-
-    def create_Mmat_rmat( self, M_params):
+        return ff
+    
+    def lfpDecomp( self, L_params, rmat, kernel ):
         '''
         This function ...
     
@@ -327,13 +369,32 @@ class LPA_Signal(object):
         Keyword arguments
         -----------------
         '''
-        Mmat = _create_Mmat( M_params, self.el_coords )
+
+        exec('h_list = _'+kernel+'(L_params, self.dt)')
+        
+        Rmat = _createRmat(h_list, rmat, self.nstim, self.ntime)
+        Lmat = pl.dot(self._lfpmat, pl.linalg.pinv(Rmat))
+
+        return Lmat, Rmat
+
+    def muaDecomp( self, M_params):
+        '''
+        This function ...
+    
+        Aguments
+        --------
+        
+        Keyword arguments
+        -----------------
+        '''
+
+        Mmat = _createMmat( M_params, self.el_coords )
         rmat = _create_rmat( Mmat, self._muamat, self._muavar,
                              self.rneg_factor )
         
         return Mmat, rmat
     
-    def _create_constraints( self ):
+    def _muaConstraints( self ):
         '''
         This function ...
     
@@ -343,8 +404,9 @@ class LPA_Signal(object):
         Keyword arguments
         -----------------
         '''
-
+        
         npop = self.npop
+        ub = self.ub
     
         # Create linear constraints
         A = pl.eye(3*npop)
@@ -357,19 +419,58 @@ class LPA_Signal(object):
             A[i + npop, i + 1] = -1
             A[i + npop, i + npop + 1] = 1
             # no additional constraints on slope
-        # Treat A[-1] separately
+        # Treat the last pop width separately
         A[2*npop-1, npop - 2] = 1
         A[2*npop-1, npop - 1] = -1
-        # b is all zeros, since box boundaries are treated with upper
-        # and lower bounds
-        b[npop-1] = self.el_coords[-1]
-        # Try this with and without the maxslopewidth
-        b[2*npop-1:] = 0.1
+        # b is set for the rows where no constraints are present
+        b[npop-1] = ub[npop-1]
+        # Try this with and without the maxslopewidth        
+        b[2*npop:] = ub[2*npop:]
         
         return A, b
 
+    def _lfpConstraints( self ):
+        '''
+        This function ...
     
-def err_eval( lpamat, Smat, Tmat):
+        Aguments
+        --------
+    
+        Keyword arguments
+        -----------------
+        '''
+        A, b = (None, None)
+        
+        return A, b
+
+    def _muaWarmup( self, *f_args ):
+        '''
+        This function ...
+    
+        Aguments
+        --------
+    
+        Keyword arguments
+        -----------------
+        '''
+        return f_args
+
+    def _lfpWarmup( self, rmat, kernel):
+        '''
+        This function ...
+    
+        Aguments
+        --------
+    
+        Keyword arguments
+        -----------------
+        '''
+        if rmat.ndim==3:
+            rmat = self._reshapeMat( rmat )
+            
+        return rmat, kernel
+    
+def errEval( lpamat, Smat, Tmat):
     '''
     This function ...
     
@@ -385,8 +486,49 @@ def err_eval( lpamat, Smat, Tmat):
     err = pl.mean(lpamat_diff**2)/pl.mean(lpamat**2)
 
     return err
+
+def _createLmat(  ):
+    '''
+    This function ...
     
-def _create_Mmat( M_params, el_coords ):
+    Aguments
+    --------
+    
+    Keyword arguments
+    -----------------
+    '''
+    pass
+    
+
+def _createRmat( h_list, rmat, nstim, ntime ):
+    '''
+    This function ...
+    
+    Aguments
+    --------
+    
+    Keyword arguments
+    -----------------
+    '''
+    nsplit = len(h_list)    
+    npop, _ = rmat.shape
+
+    Rmat = pl.zeros((nsplit*npop, nstim*ntime))
+    
+    for istim in xrange(nstim):
+        for isplit in xrange(nsplit):
+            for ipop in xrange(npop):
+                rvec = rmat[ipop, istim*ntime:(istim+1)*ntime]
+                h = h_list[isplit]
+                tmp_vec= pl.convolve(rvec, h)
+                tmp_vec=tmp_vec[:ntime]
+                Rmat[ipop+isplit*npop,\
+                         istim*ntime:(istim+1)*ntime]=tmp_vec
+
+    return Rmat
+
+    
+def _createMmat( M_params, el_coords ):
     '''
     This function ...
     
@@ -443,6 +585,43 @@ def _create_rmat( Mmat, muamat, muavar, rneg_factor):
         -rneg_factor*pl.sqrt(muavar)
     
     return rmat
+
+def _singleExp(x, dt):
+    # Create the convolution kernel
+    tau=float(x[0])
+    Delta=float(x[1])
+    t = pl.arange(0, (10*tau), dt)
+    h = pl.zeros(len(t))
+    
+    h = 1/tau*pl.exp(-(t-Delta)/tau)
+    h[pl.find(t<Delta)]=0
+
+    return [h]
+
+def _singleAlpha(x, dt):
+    tau = float(x[0])
+    Delta = float(x[1])
+    t = pl.arange(0, (10*tau), dt)
+    h = pl.zeros(len(t))
+    h = (t-Delta)/tau**2*pl.exp(-(t-Delta)/tau)
+    h[pl.find(t<Delta)] = 0
+
+    return [h]
+
+def _doubleExp(x, dt):
+    h = []
+    h.append(_singleExpKernel(x[:2], dt))
+    h.append(_singleExpKernel(x[2:], dt))
+
+    return h
+
+def _doubleAlpha(x, dt):
+    h = []
+    h.append(_singleAlphaKernel(x[:2], dt))
+    h.append(_singleAlphaKernel(x[2:], dt))
+
+    return h
+
 
             
 class randw(object):
