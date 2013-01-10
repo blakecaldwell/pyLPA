@@ -12,7 +12,7 @@ from pyLPA import LPA_Signal
 # loading the underlying data matrix and define names
 # LOADNAME = '/home/enorhe/Work/LPA/Data/LPAdata/R14P03S2Tones/'\
 #     + 'R14P03S2TonesMUAAVG_flat'
-LOADNAME = '/home/enorhe/Work/LPA/bundle/data/testdata.mat'
+LOADNAME = 'testdata.mat'
 CASENAME = 'testcase'
 
 DATA = loadmat(LOADNAME)
