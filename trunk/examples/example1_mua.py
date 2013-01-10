@@ -100,6 +100,12 @@ mode = 'mua'
 solver = 'pswarm'
 r, Mmat, rmat, Mphi = lpa_signal(mode, solver, x0, lb, ub, **solve_dict)
 
+# r = output from openopt solver with best parameters, error, and some
+# other stuff.
+# Mmat : spatial profiles
+# rmat : firing rates (or temporal profiles)
+# Mphi = Mmat *rmat
+
 ##################################################################
 # Save the stuff
 
