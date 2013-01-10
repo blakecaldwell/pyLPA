@@ -339,7 +339,7 @@ class LPA_Signal(object):
         '''
         
         Mmat, rmat = self.muaDecomp( M_params )
-        ff = errEval(self._muamat, Mmat, rmat)
+        ff = self.errEval(self._muamat, Mmat, rmat)
 
         return ff
         
@@ -355,7 +355,7 @@ class LPA_Signal(object):
         '''
         
         Lmat, Rmat = self.lfpDecomp( L_params, rmat, kernel )
-        ff = errEval(self._lfpmat, Lmat, Rmat)
+        ff = self.errEval(self._lfpmat, Lmat, Rmat)
 
         return ff
     
@@ -470,22 +470,22 @@ class LPA_Signal(object):
             
         return rmat, kernel
     
-def errEval( lpamat, Smat, Tmat):
-    '''
-    This function ...
+    def errEval( self, lpamat, Smat, Tmat):
+        '''
+        This function ...
     
-    Aguments
-    --------
+        Aguments
+        --------
         
-    Keyword arguments
-    -----------------
-    '''
+        Keyword arguments
+        -----------------
+        '''
         
-    lpamat_est = pl.dot(Smat, Tmat)
-    lpamat_diff = lpamat - lpamat_est
-    err = pl.mean(lpamat_diff**2)/pl.mean(lpamat**2)
+        lpamat_est = pl.dot(Smat, Tmat)
+        lpamat_diff = lpamat - lpamat_est
+        err = pl.mean(lpamat_diff**2)/pl.mean(lpamat**2)
 
-    return err
+        return err
 
 def _createLmat(  ):
     '''
