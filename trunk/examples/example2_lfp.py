@@ -4,7 +4,7 @@
 import os
 import numpy as np
 from scipy.io import loadmat
-import cPickle
+import pickle
 
 
 #############################################################
@@ -13,10 +13,10 @@ import cPickle
 save_lpa = 'test_lpa.p'
 save_r = 'test_r.p'
 
-with open(save_lpa, 'r') as fid:
-    lpa_signal = cPickle.load(fid)
-with open(save_r, 'r') as fid:
-    r = cPickle.load(fid)
+with open(save_lpa, 'rb') as fid:
+    lpa_signal = pickle.load(fid)
+with open(save_r, 'rb') as fid:
+    r = pickle.load(fid)
 
 # rmat and MPhi does not belong in lpa_signal, just put it there for
 # safekeeping.

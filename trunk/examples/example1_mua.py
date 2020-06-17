@@ -4,7 +4,7 @@
 import os
 import numpy as np
 from scipy.io import loadmat
-import cPickle
+import pickle
 
 # pyLPA stuff
 from pyLPA import LPA_Signal
@@ -31,7 +31,7 @@ z_space = 0.1  # electrode spacing in mm
 
 S_dict = {
     'mua_data' : MUA,
-    'lfp_data' : LFP,
+    'lfp_data' : None,
     'dt' : 1,
     'z_start' : z_start,
     'z_space' : z_space,
@@ -110,9 +110,9 @@ r, Mmat, rmat, Mphi = lpa_signal(mode, solver, x0, lb, ub, **solve_dict)
 save_lpa = 'test_lpa.p'
 save_r = 'test_r.p'
 
-with open(save_lpa, 'w') as fid:
+with open(save_lpa, 'wb') as fid:
     lpa_signal.rmat = rmat
     lpa_signal.Mphi = Mphi
-    cPickle.dump(lpa_signal, fid)
-with open(save_r, 'w') as fid:
-    cPickle.dump(r, fid)
+    pickle.dump(lpa_signal, fid)
+with open(save_r, 'wb') as fid:
+    pickle.dump(r, fid)

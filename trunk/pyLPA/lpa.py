@@ -3,6 +3,7 @@ This file should contain most tools used for LPA.
 '''
 
 import pylab as pl
+import numpy as np
 
 try:
     import openopt as oopt
@@ -42,10 +43,10 @@ class LPA_Signal(object):
         
         if verbose:
             msg = 'This is class *LPA_Signal* in *pyLPA* module'
-            print msg
+            print(msg)
         
         if not oopt_import:
-            print oopt_import_msg
+            print(oopt_import_msg)
             
         self.nstim, self.ntime, self.nchan = pl.asarray(mua_data).shape
 
@@ -62,7 +63,7 @@ class LPA_Signal(object):
         
         # create matrices and calculate variances
         self.importDataset(mua_data, 'MUA')
-        if not lfp_data==None:
+        if not np.any(lfp_data==None):
             self.importDataset(lfp_data, 'LFP')
 
     def importDataset( self, lpadata, mode ):
@@ -86,14 +87,14 @@ class LPA_Signal(object):
 
         if mode.lower()=='lfp' and hasattr(self, '_muamat'):
             if nstim != self.nstim:
-                raise Exception, 'Number of stimuli in %s and MUA data' \
-                    ' does not match' % setname
+                raise Exception('Number of stimuli in %s and MUA data' \
+                    ' does not match' % setname)
             elif ntime != self.ntime:
-                raise Exception, 'Number of sampling points in %s and' \
-                    ' MUA data does not match' % mode
+                raise Exception('Number of sampling points in %s and' \
+                    ' MUA data does not match' % mode)
             elif nchan != self.nchan:
-                raise Exception, 'Number of channels in %s and MUA data' \
-                    ' does not match' % mode
+                raise Exception('Number of channels in %s and MUA data' \
+                    ' does not match' % mode)
         # Apply base/mean subtraction to each stimulus and channel separately
         tmp_idx = 0
         if self.sub_at=='base':
@@ -102,19 +103,18 @@ class LPA_Signal(object):
             tmp_idx = ntime
         else:
             msg = '%s is not a valid choice for sub_at' % self.sub_at
-            
         if not tmp_idx==0:
-            for istim in xrange(self.nstim):
-                for ichan in xrange(self.nchan):
+            for istim in range(self.nstim):
+                for ichan in range(self.nchan):
                     lpadata[istim, :, ichan] = lpadata[istim, :, ichan] \
-                        - lpadata[istim, :tmp_idx, ichan].mean()
+                        - lpadata[istim, :int(tmp_idx), ichan].mean()
 
         # reshape data to 2D
         lpamat = self._reshapeMat( lpadata )
         #lpamat = lpadata.reshape((self.nstim*self.ntime, self.nchan)).transpose()
         
         # Evaluate variances of stimulus evoked signal
-        lpavar = lpadata[:, self.tstim_idx:, :].var()
+        lpavar = lpadata[:, int(self.tstim_idx):, :].var()
 
         exec('self._'+matname+' = lpamat')
         exec('self._'+varname+' = lpavar')
@@ -133,7 +133,7 @@ class LPA_Signal(object):
         
         if self.verbose:
             msg = 'Solving for %s part of signal' % mode 
-            print msg
+            print(msg)
         # Check if initial guess is provided in one or both of the argument
         # dictionaries
         redundant_args = ['A', 'b', 'lb', 'ub', 'x0', 'plot']
@@ -143,14 +143,14 @@ class LPA_Signal(object):
                     'override this value with the value *%s* passed on as '\
                     'positional/keyword argument' % (red_arg, red_arg)
                 if self.verbose:
-                    print msg
+                    print(msg)
                 del init_args[red_arg]
             if red_arg in solve_args.keys():
                 msg = 'Initial guess *%s* found in *solve_args*. I will ' \
                     'override this value with the value *%s* passed on as '\
                     'positional/keyword argument' % (red_arg, red_arg)
                 if self.verbose:
-                    print msg
+                    print(msg)
                 del solve_args[red_arg]        
 
         # Set temporary attributes. These are removed in the end
@@ -167,7 +167,7 @@ class LPA_Signal(object):
             if pl.mod(M_params.shape[0], 3):
                 err_msg = 'Number of elements in x0 must be dividable' \
                     'by 3. Current number of elements is %d' % M_params.shape[0]
-                raise Exception, err_msg
+                raise Exception(err_msg)
             else:
                 self.npop = M_params.shape[0]/3
             
@@ -269,7 +269,7 @@ class LPA_Signal(object):
         if fmin_args['solver'] == 'fmin_randw':
             r = self._fminRandw()
         elif not oopt_import:
-            raise Exception, oopt_import_msg
+            raise Exception(oopt_import_msg)
         elif fmin_args['solver'] in nlp_solvers+glp_solvers:
             r = self._fminOopt(**fmin_args)
         else:
@@ -316,13 +316,14 @@ class LPA_Signal(object):
         elif solver in nlp_solvers:
             init_args['plot'] = plot
             init_args['x0'] = x0
+            init_args['maxFunEvals'] = 5000
 
             p = oopt.NLP(fnc, **init_args) # Set up openopt class
             r = p.solve(solver, **solve_args) # and solve
             
         else: 
-            raise Exception, 'The solver %s is not recognized. Check' \
-                'spelling!' % solver
+            raise Exception('The solver %s is not recognized. Check' \
+                'spelling!' % solver)
 
         
         return r
@@ -370,8 +371,11 @@ class LPA_Signal(object):
         -----------------
         '''
 
-        exec('h_list = _'+kernel+'(L_params, self.dt)')
-        
+        if kernel == 'doubleExp':
+            h_list = _doubleExp(L_params, self.dt)
+        else:
+            print(kernel)
+            exit(0)
         Rmat = _createRmat(h_list, rmat, self.nstim, self.ntime)
         Lmat = pl.dot(self._lfpmat, pl.linalg.pinv(Rmat))
 
@@ -405,13 +409,13 @@ class LPA_Signal(object):
         -----------------
         '''
         
-        npop = self.npop
+        npop = int(self.npop)
         ub = self.ub
-    
+
         # Create linear constraints
         A = pl.eye(3*npop)
         b = pl.zeros(3*npop)
-        for i in xrange(npop-1):
+        for i in range(npop-1):
             # setting extra constraints on z0
             A[i, i+1] = -1
             # setting constraints on pop width
@@ -515,9 +519,9 @@ def _createRmat( h_list, rmat, nstim, ntime ):
 
     Rmat = pl.zeros((nsplit*npop, nstim*ntime))
     
-    for istim in xrange(nstim):
-        for isplit in xrange(nsplit):
-            for ipop in xrange(npop):
+    for istim in range(nstim):
+        for isplit in range(nsplit):
+            for ipop in range(npop):
                 rvec = rmat[ipop, istim*ntime:(istim+1)*ntime]
                 h = h_list[isplit]
                 tmp_vec= pl.convolve(rvec, h)
@@ -538,12 +542,13 @@ def _createMmat( M_params, el_coords ):
     Keyword arguments
     -----------------
     '''
+
     # Assume now that all measures are real measures in mm
     M_params = pl.asarray(M_params)
         
     nchan = el_coords.size
     
-    npop = M_params.shape[0]/3
+    npop = int(M_params.shape[0]/3)
     z0=M_params[:npop]
     a=M_params[npop:2*npop]
     b=M_params[2*npop:]                
@@ -552,17 +557,19 @@ def _createMmat( M_params, el_coords ):
     Mmat = pl.zeros((nchan, npop))
             
     # Update the basis matrix, Mmat
-    for ipop in xrange(npop):
+    for ipop in range(npop):
         # tmpvec is the distance between z0[ipop] and all electrode contacts
         tmpvec = abs(el_coords - z0[ipop])
         # Set all entries that are closer than a[ipop] to 1
-        Mmat[pl.find(tmpvec < a[ipop]), ipop] = 1
+        Mmat[np.where(tmpvec < a[ipop]), ipop] = 1
         # Find the entries that are on the olique part of the profile and set
         # the right value
         tmpvec = tmpvec - a[ipop]
-        cond1 = pl.find(tmpvec >= 0)
-        cond2 = pl.find(tmpvec < b[ipop])
-        isect = filter(lambda x: x in cond1, cond2)
+        cond1 = np.where(tmpvec >= 0)
+        cond1 = np.nonzero(np.ravel(tmpvec >= 0))
+        cond2 = np.nonzero(np.ravel(tmpvec < b[ipop]))
+        #isect = list(filter(lambda x: x in cond1, cond2))
+        isect = np.intersect1d(cond1, cond2)
         Mmat[isect, ipop] = 1 - 1 / b[ipop] * (tmpvec[isect])
         
     return Mmat
@@ -581,7 +588,7 @@ def _create_rmat( Mmat, muamat, muavar, rneg_factor):
     # Estimate rmat based on pseudoinverse of Mmat
     rmat=pl.dot(pl.linalg.pinv(Mmat), muamat)
     # Rectification of rmat
-    rmat[pl.find(rmat<-rneg_factor*pl.sqrt(muavar))]= \
+    rmat[np.nonzero(np.ravel(rmat<-rneg_factor*pl.sqrt(muavar)))]= \
         -rneg_factor*pl.sqrt(muavar)
     
     return rmat
@@ -594,7 +601,7 @@ def _singleExp(x, dt):
     h = pl.zeros(len(t))
     
     h = 1/tau*pl.exp(-(t-Delta)/tau)
-    h[pl.find(t<Delta)]=0
+    h[np.nonzero(np.ravel(t<Delta))]=0
 
     return [h]
 
@@ -604,7 +611,7 @@ def _singleAlpha(x, dt):
     t = pl.arange(0, (10*tau), dt)
     h = pl.zeros(len(t))
     h = (t-Delta)/tau**2*pl.exp(-(t-Delta)/tau)
-    h[pl.find(t<Delta)] = 0
+    h[np.nonzero(np.ravel(t<Delta))] = 0
 
     return [h]
 

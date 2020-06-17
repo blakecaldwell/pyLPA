@@ -7,6 +7,6 @@ evoked synaptic activity from multielectrode recordings in rat barrel cortex.
 J Neurophysiol. 97(3):2174-90" for a description of the methodology.
 '''
 
-from lpa import LPA_Signal
-import lpa
-import lpa_colormaps
+from .lpa import LPA_Signal
+from . import lpa
+from . import lpa_colormaps
