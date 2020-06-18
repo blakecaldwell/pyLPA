@@ -4,14 +4,21 @@ This file should contain most tools used for LPA.
 
 import pylab as pl
 import numpy as np
+import sys
 
+opt_import = False
 try:
-    import openopt as oopt
-    oopt_import = True
+    import scipy.optimize
+    opt_import = True
 except ImportError:
-    oopt_import = False
+    try:
+        import openopt as oopt
+        opt_import = True
+    except ImportError:
+        pass
 
-oopt_import_msg = "WARNING: No module named 'openopt'. LPA must " \
+
+opt_import_msg = "WARNING: Could not import openopt or scipy.optimize. LPA must " \
     "be done without using 'fmin_oopt()' method and associated "\
     "solvers. This means that only 'randw' algorithm is available."
 
@@ -20,6 +27,7 @@ glp_solvers = ['galileo' ,'pswarm', 'de', 'stogo', 'isres', 'mlsl']
 nlp_solvers = ['ralg', 'scipy_cobyla', 'algencan', 'scipy_slsqp',
                'mma', 'auglag', 'ipopt', 'lincher', 'scipy_fmin',
                'scipy_lbfgsb']
+scipy_solvers = ['cobyla', 'trust-constr', 'SLSQP']
 
 
 class LPA_Signal(object):
@@ -45,8 +53,8 @@ class LPA_Signal(object):
             msg = 'This is class *LPA_Signal* in *pyLPA* module'
             print(msg)
         
-        if not oopt_import:
-            print(oopt_import_msg)
+        if not opt_import:
+            print(opt_import_msg)
             
         self.nstim, self.ntime, self.nchan = pl.asarray(mua_data).shape
 
@@ -176,7 +184,6 @@ class LPA_Signal(object):
                 
             # create linear constraints
             A, b = self._muaConstraints()            
-            
             # Set the error function
             f_fnc = self._muaErr
             
@@ -208,6 +215,13 @@ class LPA_Signal(object):
             }
         
         r = self._solve(fmin_args)
+
+        if solver in scipy_solvers:
+            if r.success:
+                r.xf=r.x
+            elif solver:
+                sys.stderr.write("Error: optimization failed\n")
+                exit(2)
 
         ############################################################
         # Post solver processing
@@ -268,9 +282,7 @@ class LPA_Signal(object):
 
         if fmin_args['solver'] == 'fmin_randw':
             r = self._fminRandw()
-        elif not oopt_import:
-            raise Exception(oopt_import_msg)
-        elif fmin_args['solver'] in nlp_solvers+glp_solvers:
+        elif fmin_args['solver'] in nlp_solvers+glp_solvers+scipy_solvers:
             r = self._fminOopt(**fmin_args)
         else:
             pass
@@ -307,6 +319,7 @@ class LPA_Signal(object):
         # Check what solver is in use and put initial guess argument in right
         # dictionary
         if solver in glp_solvers:
+            import openopt as oopt
             solve_args['plot'] = plot
             solve_args['x0'] = x0
             
@@ -314,6 +327,7 @@ class LPA_Signal(object):
             r = p.solve(solver, **solve_args) # and solve
 
         elif solver in nlp_solvers:
+            import openopt as oopt
             init_args['plot'] = plot
             init_args['x0'] = x0
             init_args['maxFunEvals'] = 5000
@@ -321,7 +335,28 @@ class LPA_Signal(object):
             p = oopt.NLP(fnc, **init_args) # Set up openopt class
             r = p.solve(solver, **solve_args) # and solve
             
-        else: 
+        elif solver in scipy_solvers:
+            import scipy.optimize
+
+            options = {'disp': self.verbose}
+
+            if 'maxIter' in init_args:
+                options['maxIter'] = init_args['maxIter']
+                # options['gtol'] = 1e-10
+
+            cons = []
+            if 'A' in init_args and 'b' in init_args:
+                empty_arr = np.array(())
+                c = lambda x: empty_arr.copy()
+                cons += [{"type": "ineq", "fun": lambda x: -1 * np.hstack((c(x), init_args['A'] @ x - init_args['b']))}]
+            if 'lb' in init_args and 'ub' in init_args:
+                bounds=scipy.optimize.Bounds(init_args['lb'], init_args['ub'], keep_feasible=False)
+                # constraints=scipy.optimize.LinearConstraint(A=init_args['A'], lb=init_args['lb'], ub=init_args['ub'])
+
+            r = scipy.optimize.minimize(fnc, x0, method=solver, constraints=cons, bounds=bounds,
+                                        options=options, **solve_args)
+
+        else:
             raise Exception('The solver %s is not recognized. Check' \
                 'spelling!' % solver)
 
@@ -565,7 +600,6 @@ def _createMmat( M_params, el_coords ):
         # Find the entries that are on the olique part of the profile and set
         # the right value
         tmpvec = tmpvec - a[ipop]
-        cond1 = np.where(tmpvec >= 0)
         cond1 = np.nonzero(np.ravel(tmpvec >= 0))
         cond2 = np.nonzero(np.ravel(tmpvec < b[ipop]))
         #isect = list(filter(lambda x: x in cond1, cond2))
